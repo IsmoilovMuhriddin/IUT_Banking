@@ -3,25 +3,17 @@ package com.muhriddin.iutbanking;
 import android.content.Context;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Base64;
 import android.util.Log;
 import android.widget.TextView;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 
-import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 public class MainActivity extends AppCompatActivity {
@@ -40,9 +32,11 @@ public class MainActivity extends AppCompatActivity {
         new SecureRandom().nextBytes(salt);
 
         byte[] encKey = new byte[16];
-        for (int n = 0; n < 8; n++) {
-            encKey[n] = (byte) password.charAt(n);
-            encKey[n + 8] = salt[n];
+        for (int p = 0, s = 0; p < password.length() || s < salt.length; p++, s++) {
+            if (p < password.length())
+                encKey[p] = (byte) password.charAt(p);
+            if (s < salt.length)
+                encKey[s + password.length()] = salt[s];
         }
 
         String username = "akmaljon";
@@ -76,18 +70,37 @@ public class MainActivity extends AppCompatActivity {
         return new String(decrypt(bos.toByteArray(), encKey), "UTF-8");
     }
 
+
+    static final IvParameterSpec iv = new IvParameterSpec(new byte[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+
     static byte[] encrypt(byte[] plain, byte[] key) throws Exception {
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
+        os.write(plain);
+        for (int n = 0; n < 16 - plain.length % 16; n++)
+            os.write(0);
+        os.close();
+
         SecretKeySpec skeySpec = new SecretKeySpec(key, "AES");
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.ENCRYPT_MODE, skeySpec);
-        return cipher.doFinal(plain);
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, skeySpec, iv);
+        return cipher.doFinal(os.toByteArray());
     }
 
     static byte[] decrypt(byte[] data, byte[] key) throws Exception {
         SecretKeySpec skeySpec = new SecretKeySpec(key, "AES");
-        Cipher cipher = Cipher.getInstance("AES");
-        cipher.init(Cipher.DECRYPT_MODE, skeySpec);
-        byte[] encrypted = cipher.doFinal(data);
-        return encrypted;
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        cipher.init(Cipher.DECRYPT_MODE, skeySpec, iv);
+        byte[] plain = cipher.doFinal(data);
+
+        if (plain.length == 0)
+            return new byte[0];
+
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
+        int n = plain.length - 1;
+        while (plain[n] == 0)
+            n--;
+        os.write(plain, 0, n + 1);
+        os.close();
+        return os.toByteArray();
     }
 }
